@@ -1,0 +1,49 @@
+paths:
+  train_data: "dataset/raw/train"
+  target_dir: "dataset"
+  target_name: "yolo_dataset"
+
+files:
+  video_ext: ["mp4", "avi", "mov"]
+  image_ext: ["jpg", "jpeg", "png"]
+
+video:
+  fps: null
+  extract_all_frames: true
+
+class_mapping:
+  Backpack: {new_id: 0, new_name: "backpack"}
+  Jacket: {new_id: 1, new_name: "jacket"}
+  Laptop: {new_id: 2, new_name: "laptop"}
+  Lifering: {new_id: 3, new_name: "lifering"}
+  MobilePhone: {new_id: 4, new_name: "mobile_phone"}
+  Person1: {new_id: 5, new_name: "person"}
+  WaterBottle: {new_id: 6, new_name: "water_bottle"}
+
+processing:
+  copy_object_images: true
+
+normal_mode:
+  sequential_processing: true
+  io_threading: true
+  max_io_threads: 4
+
+turbo_mode:
+  parallel_processing: true
+  max_workers: null
+  use_threading: true
+  batch_processing: true
+  batch_size: 32
+  memory_efficient: true
+  use_numpy: true
+  vectorized_conversion: true
+  dtype: "float32"
+  concurrent_file_operations: true
+  max_file_workers: 8
+  buffer_size: 8192
+  memory_mapping: false
+  gc_frequency: 100
+  prefetch_frames: true
+  prefetch_buffer_size: 16
+  async_writes: true
+  write_batch_size: 64
