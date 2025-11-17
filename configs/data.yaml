@@ -47,3 +47,4 @@ turbo_mode:
   prefetch_buffer_size: 16
   async_writes: true
   write_batch_size: 64
+  print_sub_tqdm: false

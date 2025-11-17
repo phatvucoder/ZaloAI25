@@ -59,6 +59,7 @@ turbo_mode:
   prefetch_buffer_size: 16           # Prefetch buffer size
   async_writes: true                 # Asynchronous file writes
   write_batch_size: 64               # Write batch size
+  print_sub_tqdm: false              # Show detailed progress bars (false = simple prints)
 ```
 
 ### Usage

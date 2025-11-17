@@ -92,14 +92,16 @@ dataset/raw/train/
 - **Normal Mode**: Sequential video processing with basic threading
 - **Turbo Mode**: Parallel video processing using ThreadPoolExecutor
   - NumPy vectorized coordinate conversion
-  - Batch processing with progress tracking
+  - Batch processing with configurable progress display
   - Memory-efficient operations
+  - Terminal-compatible output modes
 
 #### Configuration System
 - YAML-based configuration (`configs/data.yaml`)
 - Class mapping system for flexible class renaming
 - Processing parameters for both modes
 - Frame extraction options (all frames vs annotated only)
+- Configurable progress display (tqdm vs simple prints)
 
 #### Class Extraction Logic
 ```python
@@ -146,3 +148,5 @@ dataset/yolo_dataset/
 - Set `extract_all_frames: true` to process complete videos from start
 - Adjust turbo mode settings based on available CPU/memory
 - Class mapping allows flexible renaming and ID assignment
+- Use `print_sub_tqdm: false` for terminals that don't support `\r` (carriage return)
+- Set `print_sub_tqdm: true` for detailed progress bars with batch information
