@@ -73,6 +73,73 @@ def extract_annotations(video_record):
     return annotations_dict
 
 
+def get_video_fps(cap):
+    """Safely detect video FPS with fallback."""
+    try:
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        if fps <= 0 or fps != fps:  # Check for invalid or NaN values
+            return None
+        return fps
+    except Exception:
+        return None
+
+
+def calculate_frame_interval(original_fps, target_fps):
+    """Calculate frame sampling interval based on target FPS."""
+    if target_fps is None or target_fps <= 0:
+        return 1  # No sampling
+
+    if original_fps is None or original_fps <= 0:
+        return 1  # Can't calculate without original FPS
+
+    if target_fps >= original_fps:
+        return 1  # Target FPS is higher or equal to original, no sampling needed
+
+    interval = int(original_fps / target_fps)
+    return max(1, interval)  # Ensure minimum interval of 1
+
+
+def calculate_hybrid_frame_indices(total_frames, original_fps, annotated_fps, non_annotated_fps,
+                                 annotated_frames_set, ensure_annotated_frames=True):
+    """
+    Calculate which frames to extract based on hybrid FPS configuration.
+
+    Args:
+        total_frames: Total number of frames in the video
+        original_fps: Original video FPS (may be None)
+        annotated_fps: Target FPS for annotated frames (None = original)
+        non_annotated_fps: Target FPS for non-annotated frames
+        annotated_frames_set: Set of frame numbers that have annotations
+        ensure_annotated_frames: If True, never skip annotated frames
+
+    Returns:
+        Sorted list of frame numbers to extract
+    """
+    selected_frames = set()
+
+    # Always include annotated frames if required
+    if ensure_annotated_frames:
+        selected_frames.update(annotated_frames_set)
+
+    # Calculate sampling intervals
+    annotated_interval = calculate_frame_interval(original_fps, annotated_fps)
+    non_annotated_interval = calculate_frame_interval(original_fps, non_annotated_fps)
+
+    # Sample annotated frames at the specified FPS (if not already included)
+    if not ensure_annotated_frames:
+        annotated_frames_list = sorted(annotated_frames_set)
+        for i, frame_num in enumerate(annotated_frames_list):
+            if i % annotated_interval == 0:
+                selected_frames.add(frame_num)
+
+    # Sample non-annotated frames
+    for frame_num in range(0, total_frames, non_annotated_interval):
+        if frame_num not in annotated_frames_set:
+            selected_frames.add(frame_num)
+
+    return sorted(selected_frames)
+
+
 def convert_to_yolo_format(box, img_width, img_height):
     """Convert bounding box coordinates to YOLO format."""
     x1, y1, x2, y2 = float(box[0]), float(box[1]), float(box[2]), float(box[3])
@@ -155,16 +222,35 @@ def process_frames_video(video_record, output_dirs, config, class_info,
         video_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         video_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-        extract_all_frames = config['video'].get('extract_all_frames', False)
+        # Determine extraction mode
+        video_config = config.get('video', {})
+        extraction_mode = video_config.get('extraction_mode', 'annotated_only')
 
-        if extract_all_frames:
-            _process_all_frames(cap, video_id, annotations_dict, output_dirs, config,
-                              class_id, video_width, video_height, use_numpy,
-                              vectorized_conversion, dtype, print_sub_tqdm, batch_size)
+        # Common processing parameters
+        process_params = (cap, video_id, annotations_dict, output_dirs, config,
+                         class_id, video_width, video_height, use_numpy,
+                         vectorized_conversion, dtype, print_sub_tqdm, batch_size)
+
+        if extraction_mode == 'legacy':
+            # Legacy: use extract_all_frames setting
+            if video_config.get('extract_all_frames', False):
+                _process_all_frames(*process_params)
+            else:
+                _process_annotated_frames(*process_params)
+        elif extraction_mode == 'all':
+            _process_all_frames(*process_params)
+        elif extraction_mode == 'annotated_only':
+            _process_annotated_frames(*process_params)
+        elif extraction_mode == 'hybrid':
+            hybrid_fps = video_config.get('hybrid_fps', {})
+            if hybrid_fps.get('enabled', False):
+                _process_hybrid_frames(*process_params)
+            else:
+                print(f"Warning: hybrid mode enabled but hybrid_fps.disabled for {video_id}. Using annotated_only.")
+                _process_annotated_frames(*process_params)
         else:
-            _process_annotated_frames(cap, video_id, annotations_dict, output_dirs, config,
-                                    class_id, video_width, video_height, use_numpy,
-                                    vectorized_conversion, dtype, print_sub_tqdm, batch_size)
+            print(f"Warning: Unknown extraction mode '{extraction_mode}' for {video_id}. Using annotated_only.")
+            _process_annotated_frames(*process_params)
     finally:
         cap.release()
 
@@ -186,16 +272,11 @@ def _process_all_frames(cap, video_id, annotations_dict, output_dirs, config,
         if not ret:
             break
 
-        # Get frame info and paths
-        file_basename = f"{video_id}_frame_{frame_num:06d}"
-        image_path = os.path.join(output_dirs['images'], f"{file_basename}.{config['files']['image_ext'][0]}")
-        label_path = os.path.join(output_dirs['labels'], f"{file_basename}.txt")
-
         # Save frame and labels
-        cv2.imwrite(image_path, frame)
         boxes = annotations_dict.get(frame_num, [])
-        write_yolo_labels(label_path, class_id, boxes, video_width, video_height,
-                        use_numpy, vectorized_conversion, dtype)
+        _save_frame_and_labels(frame_num, video_id, frame, boxes, output_dirs, config,
+                             class_id, video_width, video_height, use_numpy,
+                             vectorized_conversion, dtype)
 
         processed_frames += 1
 
@@ -227,15 +308,10 @@ def _process_annotated_frames(cap, video_id, annotations_dict, output_dirs, conf
         if not ret:
             continue
 
-        # Get frame info and paths
-        file_basename = f"{video_id}_frame_{frame_num:06d}"
-        image_path = os.path.join(output_dirs['images'], f"{file_basename}.{config['files']['image_ext'][0]}")
-        label_path = os.path.join(output_dirs['labels'], f"{file_basename}.txt")
-
         # Save frame and labels
-        cv2.imwrite(image_path, frame)
-        write_yolo_labels(label_path, class_id, boxes, video_width, video_height,
-                        use_numpy, vectorized_conversion, dtype)
+        _save_frame_and_labels(frame_num, video_id, frame, boxes, output_dirs, config,
+                             class_id, video_width, video_height, use_numpy,
+                             vectorized_conversion, dtype)
 
         processed_frames += 1
 
@@ -247,6 +323,95 @@ def _process_annotated_frames(cap, video_id, annotations_dict, output_dirs, conf
 
     if pbar:
         pbar.close()
+
+
+def _save_frame_and_labels(frame_num, video_id, frame, boxes, output_dirs, config,
+                           class_id, video_width, video_height, use_numpy,
+                           vectorized_conversion, dtype):
+    """Save a single frame and its YOLO labels."""
+    file_basename = f"{video_id}_frame_{frame_num:06d}"
+    image_path = os.path.join(output_dirs['images'], f"{file_basename}.{config['files']['image_ext'][0]}")
+    label_path = os.path.join(output_dirs['labels'], f"{file_basename}.txt")
+
+    cv2.imwrite(image_path, frame)
+    write_yolo_labels(label_path, class_id, boxes, video_width, video_height,
+                    use_numpy, vectorized_conversion, dtype)
+
+
+def _process_hybrid_frames(cap, video_id, annotations_dict, output_dirs, config,
+                          class_id, video_width, video_height, use_numpy,
+                          vectorized_conversion, dtype, print_sub_tqdm, batch_size):
+    """Process frames using hybrid FPS configuration."""
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    original_fps = get_video_fps(cap)
+
+    # Get hybrid FPS configuration
+    hybrid_config = config.get('video', {}).get('hybrid_fps', {})
+    annotated_fps = hybrid_config.get('annotated_fps')
+    non_annotated_fps = hybrid_config.get('non_annotated_fps', 3)
+    ensure_annotated_frames = hybrid_config.get('ensure_annotated_frames', True)
+
+    # Get set of annotated frames
+    annotated_frames_set = set(annotations_dict.keys())
+
+    # Calculate which frames to process
+    frames_to_process = calculate_hybrid_frame_indices(
+        total_frames, original_fps, annotated_fps, non_annotated_fps,
+        annotated_frames_set, ensure_annotated_frames
+    )
+
+    pbar = None
+    if print_sub_tqdm:
+        annotated_count = len([f for f in frames_to_process if f in annotated_frames_set])
+        non_annotated_count = len(frames_to_process) - annotated_count
+        desc = f"Processing {video_id} (hybrid: {annotated_count} ann, {non_annotated_count} empty)"
+        pbar = tqdm(total=len(frames_to_process), desc=desc)
+
+    processed_frames = 0
+    last_frame_pos = None
+
+    for frame_num in frames_to_process:
+        # Only seek if frame position is far from current position
+        if last_frame_pos is None or abs(frame_num - last_frame_pos) > 5:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_num)
+
+        ret, frame = cap.read()
+        if not ret:
+            # If reading failed, try seeking explicitly
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_num)
+            ret, frame = cap.read()
+            if not ret:
+                continue
+
+        last_frame_pos = frame_num
+
+        # Save frame and labels
+        boxes = annotations_dict.get(frame_num, [])
+        _save_frame_and_labels(frame_num, video_id, frame, boxes, output_dirs, config,
+                             class_id, video_width, video_height, use_numpy,
+                             vectorized_conversion, dtype)
+
+        processed_frames += 1
+
+        # Update progress
+        if print_sub_tqdm and pbar:
+            pbar.update(1)
+            if processed_frames % batch_size == 0:
+                pbar.set_postfix({"batch": f"{processed_frames//batch_size} ({processed_frames}/{len(frames_to_process)})"})
+
+    if pbar:
+        pbar.close()
+
+    # Print processing statistics
+    original_annotated = len(annotated_frames_set)
+    original_total = total_frames
+    final_annotated = len([f for f in frames_to_process if f in annotated_frames_set])
+    final_total = len(frames_to_process)
+
+    print(f"{video_id} hybrid processing:")
+    print(f"  Original: {original_annotated}/{original_total} frames ({original_annotated/total_frames*100:.1f}% annotated)")
+    print(f"  Final: {final_annotated}/{final_total} frames ({final_annotated/final_total*100:.1f}% annotated)")
+    print(f"  Size reduction: {(1 - final_total/original_total)*100:.1f}%")
 
 
 def copy_object_images_task(config, original_class, class_info):

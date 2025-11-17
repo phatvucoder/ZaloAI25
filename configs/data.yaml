@@ -1,17 +1,27 @@
+# ZaloAI25 YOLO Dataset Configuration
+
 paths:
-  train_data: "dataset/raw/train"
-  target_dir: "dataset"
-  target_name: "yolo_dataset"
+  train_data: "dataset/raw/train"    # Raw training data
+  target_dir: "dataset"              # Output directory
+  target_name: "yolo_dataset"        # Dataset name
 
 files:
-  video_ext: ["mp4", "avi", "mov"]
-  image_ext: ["jpg", "jpeg", "png"]
+  video_ext: ["mp4", "avi", "mov"]   # Supported video formats
+  image_ext: ["jpg"]                 # Output image formats
 
 video:
-  fps: null
-  extract_all_frames: true
+  extraction_mode: "hybrid"          # legacy - backward compatibility
+                                     # all - every frame from video
+                                     # annotated_only - only frames with annotations
+                                     # hybrid - different FPS for annotated vs empty frames
+  hybrid_fps:
+    enabled: true                    # Enable hybrid FPS
+    annotated_fps: null              # FPS for annotated frames (null=original)
+    non_annotated_fps: 3             # FPS for empty frames
+    ensure_annotated_frames: true    # Never skip annotated frames
 
 class_mapping:
+  # Map original class names from video IDs to standardized YOLO format
   Backpack: {new_id: 0, new_name: "backpack"}
   Jacket: {new_id: 1, new_name: "jacket"}
   Laptop: {new_id: 2, new_name: "laptop"}
@@ -21,30 +31,30 @@ class_mapping:
   WaterBottle: {new_id: 6, new_name: "water_bottle"}
 
 processing:
-  copy_object_images: true
+  copy_object_images: true           # Copy reference object images to dataset
 
 normal_mode:
-  sequential_processing: true
-  io_threading: true
-  max_io_threads: 4
+  sequential_processing: true        # Process videos one by one
+  io_threading: true                 # Use threading for file I/O
+  max_io_threads: 4                  # Maximum I/O threads
 
 turbo_mode:
-  parallel_processing: true
-  max_workers: null
-  use_threading: true
-  batch_processing: true
-  batch_size: 32
-  memory_efficient: true
-  use_numpy: true
-  vectorized_conversion: true
-  dtype: "float32"
-  concurrent_file_operations: true
-  max_file_workers: 8
-  buffer_size: 8192
-  memory_mapping: false
-  gc_frequency: 100
-  prefetch_frames: true
-  prefetch_buffer_size: 16
-  async_writes: true
-  write_batch_size: 64
-  print_sub_tqdm: false
+  parallel_processing: true          # Process multiple videos simultaneously
+  max_workers: null                  # Worker count (null = auto-detect CPU count)
+  use_threading: true                # Use ThreadPool instead of ProcessPool
+  batch_processing: true             # Process frames in batches
+  batch_size: 32                     # Frames per batch
+  memory_efficient: true             # Enable memory optimizations
+  use_numpy: true                    # Use NumPy for faster calculations
+  vectorized_conversion: true        # Vectorize coordinate conversion
+  dtype: "float32"                   # NumPy data type
+  concurrent_file_operations: true   # Parallel file operations
+  max_file_workers: 8                # File operation workers
+  buffer_size: 8192                  # I/O buffer size
+  memory_mapping: false              # Use memory mapping for large files
+  gc_frequency: 100                  # Garbage collection frequency
+  prefetch_frames: true              # Prefetch video frames
+  prefetch_buffer_size: 16           # Prefetch buffer size
+  async_writes: true                 # Asynchronous file writes
+  write_batch_size: 64               # Write batch size
+  print_sub_tqdm: false              # Show detailed progress bars

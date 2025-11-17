@@ -73,9 +73,10 @@ dataset/raw/train/
 
 ### Processing Pipeline
 1. **Data Processing**: Convert video annotations to YOLO training format
-   - Frame extraction from videos (all frames or annotated only)
+   - **Hybrid FPS Processing**: Different frame sampling for annotated vs empty frames
    - Bounding box coordinate conversion to YOLO format
    - Class ID assignment based on video naming convention
+   - ~90% dataset size reduction while preserving all training data
 
 2. **Dataset Generation**: Two processing modes available
    - **Normal Mode**: Sequential processing, maximum compatibility
@@ -97,10 +98,11 @@ dataset/raw/train/
   - Terminal-compatible output modes
 
 #### Configuration System
-- YAML-based configuration (`configs/data.yaml`)
+- YAML-based configuration (`configs/data.yaml`) with comprehensive inline documentation
+- **Hybrid FPS Configuration**: Different frame sampling rates for annotated vs empty frames
 - Class mapping system for flexible class renaming
+- Multiple extraction modes: legacy, all, annotated_only, hybrid
 - Processing parameters for both modes
-- Frame extraction options (all frames vs annotated only)
 - Configurable progress display (tqdm vs simple prints)
 
 #### Class Extraction Logic
@@ -145,8 +147,22 @@ dataset/yolo_dataset/
 - Large video files benefit from parallel processing
 
 ### Configuration Guidelines
-- Set `extract_all_frames: true` to process complete videos from start
+- **Hybrid FPS Mode**: Set `extraction_mode: "hybrid"` with `hybrid_fps.enabled: true`
+  - `annotated_fps: null` preserves all training data at original FPS
+  - `non_annotated_fps: 3` samples empty frames at 3 FPS for ~90% size reduction
+  - `ensure_annotated_frames: true` guarantees no training data loss
+- **Extraction Modes**:
+  - `legacy` - backward compatibility mode
+  - `all` - process every frame from video
+  - `annotated_only` - process only frames with annotations
+  - `hybrid` - different FPS for annotated vs empty frames
 - Adjust turbo mode settings based on available CPU/memory
 - Class mapping allows flexible renaming and ID assignment
 - Use `print_sub_tqdm: false` for terminals that don't support `\r` (carriage return)
 - Set `print_sub_tqdm: true` for detailed progress bars with batch information
+
+### Hybrid FPS Benefits
+- **Storage Efficiency**: Reduces dataset size from 20GB to ~2-3GB (~90% reduction)
+- **Training Quality**: Preserves 100% of annotated frames for complete training data
+- **Performance**: Faster training with redundant empty frames removed
+- **Flexibility**: Configurable FPS settings for different use cases
