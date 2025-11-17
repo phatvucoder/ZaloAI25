@@ -101,7 +101,7 @@ dataset/raw/train/
 - YAML-based configuration (`configs/data.yaml`) with comprehensive inline documentation
 - **Hybrid FPS Configuration**: Different frame sampling rates for annotated vs empty frames
 - Class mapping system for flexible class renaming
-- Multiple extraction modes: legacy, all, annotated_only, hybrid
+- Multiple extraction modes: legacy, all, annotated_only, hybrid, non_annotated_only
 - Processing parameters for both modes
 - Configurable progress display (tqdm vs simple prints)
 

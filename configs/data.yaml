@@ -14,10 +14,11 @@ video:
                                      # all - every frame from video
                                      # annotated_only - only frames with annotations
                                      # hybrid - different FPS for annotated vs empty frames
+                                     # non_annotated_only - only empty frames (no annotations)
   hybrid_fps:
     enabled: true                    # Enable hybrid FPS
-    annotated_fps: null              # FPS for annotated frames (null=original)
-    non_annotated_fps: 3             # FPS for empty frames
+    annotated_fps: null              # FPS for annotated frames (null=original, 0=none)
+    non_annotated_fps: 3             # FPS for empty frames (0=none)
     ensure_annotated_frames: true    # Never skip annotated frames
 
 class_mapping:

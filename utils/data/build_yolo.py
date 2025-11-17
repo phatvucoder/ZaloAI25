@@ -86,11 +86,17 @@ def get_video_fps(cap):
 
 def calculate_frame_interval(original_fps, target_fps):
     """Calculate frame sampling interval based on target FPS."""
-    if target_fps is None or target_fps <= 0:
-        return 1  # No sampling
+    if target_fps is None:
+        return 1  # No sampling when FPS is None (original FPS)
+
+    if target_fps == 0:
+        return float('inf')  # Return infinite interval to skip all frames
+
+    if target_fps < 0:
+        raise ValueError("FPS cannot be negative")
 
     if original_fps is None or original_fps <= 0:
-        return 1  # Can't calculate without original FPS
+        return 1  # Can't calculate without original FPS, use no sampling
 
     if target_fps >= original_fps:
         return 1  # Target FPS is higher or equal to original, no sampling needed
@@ -133,9 +139,10 @@ def calculate_hybrid_frame_indices(total_frames, original_fps, annotated_fps, no
                 selected_frames.add(frame_num)
 
     # Sample non-annotated frames
-    for frame_num in range(0, total_frames, non_annotated_interval):
-        if frame_num not in annotated_frames_set:
-            selected_frames.add(frame_num)
+    if non_annotated_interval != float('inf'):  # Only sample if not skipping completely
+        for frame_num in range(0, total_frames, non_annotated_interval):
+            if frame_num not in annotated_frames_set:
+                selected_frames.add(frame_num)
 
     return sorted(selected_frames)
 
@@ -241,6 +248,8 @@ def process_frames_video(video_record, output_dirs, config, class_info,
             _process_all_frames(*process_params)
         elif extraction_mode == 'annotated_only':
             _process_annotated_frames(*process_params)
+        elif extraction_mode == 'non_annotated_only':
+            _process_non_annotated_frames(*process_params)
         elif extraction_mode == 'hybrid':
             hybrid_fps = video_config.get('hybrid_fps', {})
             if hybrid_fps.get('enabled', False):
@@ -412,6 +421,67 @@ def _process_hybrid_frames(cap, video_id, annotations_dict, output_dirs, config,
     print(f"  Original: {original_annotated}/{original_total} frames ({original_annotated/total_frames*100:.1f}% annotated)")
     print(f"  Final: {final_annotated}/{final_total} frames ({final_annotated/final_total*100:.1f}% annotated)")
     print(f"  Size reduction: {(1 - final_total/original_total)*100:.1f}%")
+
+
+def _process_non_annotated_frames(cap, video_id, annotations_dict, output_dirs, config,
+                                 class_id, video_width, video_height, use_numpy,
+                                 vectorized_conversion, dtype, print_sub_tqdm, batch_size):
+    """Process only frames without annotations (empty frames)."""
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+    # Create set of annotated frame numbers for quick lookup
+    annotated_frames_set = set(annotations_dict.keys())
+
+    # Generate list of non-annotated frames
+    non_annotated_frames = [frame_num for frame_num in range(total_frames)
+                           if frame_num not in annotated_frames_set]
+
+    if not non_annotated_frames:
+        print(f"Warning: {video_id} has no non-annotated frames to process")
+        return
+
+    pbar = None
+    if print_sub_tqdm:
+        pbar = tqdm(total=len(non_annotated_frames), desc=f"Processing {video_id} (non-annotated)")
+
+    processed_frames = 0
+
+    for frame_num in non_annotated_frames:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_num)
+        ret, frame = cap.read()
+        if not ret:
+            continue
+
+        # Save frame without labels (empty labels file)
+        file_basename = f"{video_id}_frame_{frame_num:06d}"
+        image_path = os.path.join(output_dirs['images'], f"{file_basename}.{config['files']['image_ext'][0]}")
+        label_path = os.path.join(output_dirs['labels'], f"{file_basename}.txt")
+
+        cv2.imwrite(image_path, frame)
+
+        # Create empty label file
+        with open(label_path, 'w') as f:
+            pass  # Empty file for frames without annotations
+
+        processed_frames += 1
+
+        # Update progress
+        if print_sub_tqdm and pbar:
+            pbar.update(1)
+            if processed_frames % batch_size == 0:
+                pbar.set_postfix({"batch": f"{processed_frames//batch_size} ({processed_frames}/{len(non_annotated_frames)})"})
+
+    if pbar:
+        pbar.close()
+
+    # Print processing statistics
+    original_annotated = len(annotated_frames_set)
+    original_total = total_frames
+    final_non_annotated = processed_frames
+
+    print(f"{video_id} non-annotated-only processing:")
+    print(f"  Original: {original_annotated}/{original_total} frames ({original_annotated/total_frames*100:.1f}% annotated)")
+    print(f"  Processed: {final_non_annotated} non-annotated frames ({final_non_annotated/original_total*100:.1f}% of total)")
 
 
 def copy_object_images_task(config, original_class, class_info):
