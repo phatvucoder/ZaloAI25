@@ -1,22 +1,24 @@
 # ZaloAI25 YOLO Dataset Configuration
 
 paths:
-  train_data: "dataset/raw/train"    # Raw training data
-  target_dir: "dataset"              # Output directory
-  target_name: "yolo_dataset"        # Dataset name
+  train_data: "dataset/raw/train"     # Raw training data
+  target_dir: "dataset"               # Output directory
+  target_name: "yolo_dataset"         # Dataset name
+  target_subset_dir: "dataset/subset" # Subset output directory
+  target_subset_name: "yolo_dataset"  # Subset dataset name
 
 files:
   video_ext: ["mp4", "avi", "mov"]   # Supported video formats
   image_ext: ["jpg"]                 # Output image formats
 
 video:
-  extraction_mode: "hybrid"          # legacy - backward compatibility
+  extraction_mode: "all"             # legacy - backward compatibility
                                      # all - every frame from video
                                      # annotated_only - only frames with annotations
                                      # hybrid - different FPS for annotated vs empty frames
                                      # non_annotated_only - only empty frames (no annotations)
   hybrid_fps:
-    enabled: true                    # Enable hybrid FPS
+    enabled: false                   # Enable hybrid FPS
     annotated_fps: null              # FPS for annotated frames (null=original, 0=none)
     non_annotated_fps: 3             # FPS for empty frames (0=none)
     ensure_annotated_frames: true    # Never skip annotated frames

@@ -134,6 +134,35 @@ dataset/yolo_dataset/
 └── objects/          # Object reference images
 ```
 
+### Create Dataset Subsets
+```bash
+# Create subset with custom sampling: keep 5 annotated frames every 30, 2 non-annotated every 25
+python -m utils.data.build_subyolo --config configs/data.yaml --annotated 5 30 --non_annotated 2 25
+
+# Small subset: 1 annotated frame every 50, no non-annotated frames
+python -m utils.data.build_subyolo --config configs/data.yaml --annotated 1 50 --non_annotated 0 0
+
+# No frames at all (test configuration)
+python -m utils.data.build_subyolo --config configs/data.yaml --annotated 0 0 --non_annotated 0 0
+```
+
+### Subset Output Structure
+```
+dataset/yolo_subset/
+├── images/           # Selected frame images with same naming convention
+├── labels/           # Corresponding YOLO format label files
+└── splits/           # Empty folder for train/validation splits
+```
+
+#### Subset Sampling Algorithm
+The `[keep, interval]` sampling logic works as follows:
+- **[5, 30]**: Each 30 frames, keep 5 frames equidistant within that interval
+- **[2, 25]**: Each 25 frames, keep 2 frames equidistant within that interval
+- **[0, 0]**: Don't take any frames from this category
+- **[1, 50]**: Each 50 frames, keep 1 frame (the first one in interval)
+
+**Note**: Subset creation is **non-destructive** - original dataset preserved completely.
+
 ## Important Notes
 
 ### Data Leakage Prevention
@@ -146,16 +175,36 @@ dataset/yolo_dataset/
 - Turbo mode requires NumPy and concurrent.futures
 - Large video files benefit from parallel processing
 
+#### Extraction Mode Performance Impact
+- **`legacy`**: Fast (default: only annotated frames) - **Recommended for speed**
+- **`annotated_only`**: Fast (only frames with annotations)
+- **`all`**: Slow (every frame from video) - **Maximum coverage**
+- **`hybrid`**: Medium (configurable FPS sampling) - **Storage efficient**
+- **`non_annotated_only`**: Fast (only empty frames, no training data)
+
+**Performance Ranking (Fastest → Slowest)**:
+1. `annotated_only` / `legacy` (default)
+2. `non_annotated_only`
+3. `hybrid` (depends on FPS settings)
+4. `all` (slowest but most complete)
+
 ### Configuration Guidelines
 - **Hybrid FPS Mode**: Set `extraction_mode: "hybrid"` with `hybrid_fps.enabled: true`
   - `annotated_fps: null` preserves all training data at original FPS
   - `non_annotated_fps: 3` samples empty frames at 3 FPS for ~90% size reduction
   - `ensure_annotated_frames: true` guarantees no training data loss
 - **Extraction Modes**:
-  - `legacy` - backward compatibility mode
-  - `all` - process every frame from video
-  - `annotated_only` - process only frames with annotations
-  - `hybrid` - different FPS for annotated vs empty frames
+  - `legacy` - backward compatibility mode (fast, default: annotated only)
+  - `all` - process every frame from video (slow, maximum coverage)
+  - `annotated_only` - process only frames with annotations (fast)
+  - `hybrid` - different FPS for annotated vs empty frames (medium, storage efficient)
+  - `non_annotated_only` - process only empty frames (no training data)
+- **Subset Configuration**: Add to `paths` section for build_subyolo.py
+  ```yaml
+  paths:
+    target_subset_dir: "dataset/subset"   # Subset output directory
+    target_subset_name: "yolo_dataset"    # Subset dataset name
+  ```
 - Adjust turbo mode settings based on available CPU/memory
 - Class mapping allows flexible renaming and ID assignment
 - Use `print_sub_tqdm: false` for terminals that don't support `\r` (carriage return)
@@ -166,3 +215,44 @@ dataset/yolo_dataset/
 - **Training Quality**: Preserves 100% of annotated frames for complete training data
 - **Performance**: Faster training with redundant empty frames removed
 - **Flexibility**: Configurable FPS settings for different use cases
+
+## Troubleshooting
+
+### Performance Issues
+**Problem**: `build_yolo.py` is running very slowly
+**Solution**: Check your `extraction_mode` setting:
+- Use `extraction_mode: "legacy"` for fast processing (default: annotated frames only)
+- Avoid `extraction_mode: "all"` unless you need every single frame
+- Use `--mode turbo` for parallel processing if available
+
+**Problem**: Memory usage too high
+**Solution**:
+- Use `--mode normal` for sequential processing
+- Reduce turbo mode `batch_size` in config
+- Close other applications while processing
+
+### Dataset Issues
+**Problem**: "Dataset generation complete!" but no files created
+**Solution**:
+- Check that video files exist in `dataset/raw/train/samples/*/`
+- Verify video extensions match config (`video_ext: ["mp4", "avi", "mov"]`)
+- Check annotations file exists at `dataset/raw/train/annotations/annotations.json`
+
+**Problem**: build_subyolo.py can't find source dataset
+**Solution**:
+- Ensure you've run `build_yolo.py` first to create the source dataset
+- Check `target_dir` and `target_name` paths in config
+- Verify source dataset has `images/` and `labels/` folders
+
+### Configuration Issues
+**Problem**: "No class mapping found for video_id" error
+**Solution**:
+- Check video ID format matches class naming convention
+- Verify class exists in `class_mapping` section
+- Ensure video IDs follow `{ClassName}_{instance_number}` format
+
+**Problem**: Subset creation fails with parameter errors
+**Solution**:
+- Ensure all parameters are non-negative integers
+- Use format: `--annotated K N` where K = frames to keep, N = interval size
+- Don't use `--annotated 5 0` (interval can't be 0 when keep > 0)
