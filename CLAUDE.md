@@ -163,6 +163,58 @@ The `[keep, interval]` sampling logic works as follows:
 
 **Note**: Subset creation is **non-destructive** - original dataset preserved completely.
 
+### Create Train/Val/Test Splits
+```bash
+# Default OOD50 splitting (video ID suffix: _0_ → train, _1_ → val)
+python utils/data/split_yolo.py
+
+# OOD50 with reversed assignment (_1_ → train, _0_ → val)
+python utils/data/split_yolo.py --method ood50 --reversed
+
+# Random ratio splitting (ignores data leakage)
+python utils/data/split_yolo.py --method random_ratio --ratio 70 30
+
+# Random ratio with test set (70% train, 20% val, 10% test)
+python utils/data/split_yolo.py --method random_ratio --ratio 70 20 10
+
+# Custom config file
+python utils/data/split_yolo.py --config my_config.yaml
+```
+
+### Split Files Output Structure
+```
+dataset/yolo_dataset/
+├── images/           # Extracted video frames
+├── labels/           # YOLO format label files
+├── splits/           # Train/validation/test split files
+│   ├── train.txt     # Absolute paths to training images
+│   ├── val.txt       # Absolute paths to validation images
+│   └── test.txt      # Absolute paths to test images (if created)
+└── objects/          # Object reference images
+```
+
+#### Splitting Methods
+
+**OOD50 Method (Default)**
+- Uses video ID naming convention: `{ClassName}_{0/1}_frame_{frame_num:06d}.jpg`
+- Files ending in `_0_` go to training set
+- Files ending in `_1_` go to validation set
+- `--reversed` flag swaps the assignments
+- Preserves data leakage prevention (video-level splitting)
+
+**Random Ratio Method**
+- Randomly shuffles all images and splits by percentage
+- Ignores video boundaries (potential data leakage)
+- Ratio format: `[train_pct, val_pct]` or `[train_pct, val_pct, test_pct]`
+- Must sum to 100 (e.g., `70 30` or `70 20 10`)
+
+**Configuration Requirement**
+Add to `configs/data.yaml` in the `paths` section:
+```yaml
+paths:
+  split_dir: "dataset/yolo_dataset"   # Source dataset directory for splitting
+```
+
 ## Important Notes
 
 ### Data Leakage Prevention

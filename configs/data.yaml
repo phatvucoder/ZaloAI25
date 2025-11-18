@@ -6,6 +6,7 @@ paths:
   target_name: "yolo_dataset"         # Dataset name
   target_subset_dir: "dataset/subset" # Subset output directory
   target_subset_name: "yolo_dataset"  # Subset dataset name
+  split_dir: "dataset/yolo_dataset"   # Source dataset directory for splitting
 
 files:
   video_ext: ["mp4", "avi", "mov"]   # Supported video formats
