@@ -19,9 +19,5 @@ inference:
 
 class_mapping:
   BlackBox: 0
-  Jacket: 1
-  Laptop: 2
-  Lifering: 3
-  MobilePhone: 4
-  Person1: 5
-  WaterBottle: 6
+  CardboardBox: 1
+  LifeJacket: 2
