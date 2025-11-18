@@ -12,6 +12,10 @@ The most critical issue is **data leakage** - frames from the same video should 
 
 **Solution**: Split by entire videos, not individual frames.
 
+### Current Focus: Class-Aware Inference System
+
+The project has evolved to include a sophisticated **class-aware inference system** that handles multiple object classes with intelligent video-to-class mapping and single bounding box selection per frame.
+
 ## Data Structure
 
 ### Raw Dataset Organization
@@ -48,6 +52,12 @@ dataset/raw/train/
 
 **Test Classes (unseen during training):**
 - BlackBox, CardboardBox, LifeJacket
+
+### Class-Aware Inference Mapping
+The inference system uses intelligent class mapping to detect appropriate objects for each video:
+- **BlackBox** → Maps to `suitcase` (COCO class 28) for box-like objects
+- **CardboardBox** → Maps to `suitcase` (COCO class 28) for box-like objects
+- **LifeJacket** → Maps to `backpack` (COCO class 24) for wearable objects
 
 ### Annotation Format (JSON)
 ```json
@@ -86,6 +96,122 @@ dataset/raw/train/
 4. **Evaluation**: Validate performance with video-level splits
 5. **Inference**: Generate predictions on test data
 6. **Submission**: Format results for competition
+
+### Class-Aware Inference System
+
+#### Core Features
+- **Dynamic Class Detection**: Video name determines target class (e.g., "BlackBox_0" → BlackBox class)
+- **Single BBox Per Frame**: Selects highest confidence detection per frame to avoid duplicates
+- **Unlimited Class Support**: Flexible class mapping system in configuration
+- **COCO Integration**: Maps to appropriate COCO classes for pretrained model compatibility
+
+#### Processing Flow
+```
+Video: "BlackBox_0"
+├── Extract: "BlackBox" from folder name
+├── Lookup: BlackBox → class_id 0 (model-specific)
+├── Filter: Only specified class detections
+├── Select: Best bbox per frame (highest confidence)
+└── Output: Single bbox per frame for target class only
+```
+
+#### Configuration Structure
+```yaml
+# Class mapping system
+class_mapping:
+  BlackBox: 0      # Model class ID for BlackBox
+  CardboardBox: 1  # Model class ID for CardboardBox
+  LifeJacket: 2    # Model class ID for LifeJacket
+  # Add unlimited classes as needed
+
+# Inference parameters
+inference:
+  confidence: 0.25      # Detection confidence threshold
+  iou_threshold: 0.45   # NMS IoU threshold
+  stream: true          # Memory-efficient processing
+  device: "auto"        # GPU/CPU selection
+```
+
+#### Key Implementation Features
+
+**Class Name Extraction**
+```python
+def extract_class_from_video_name(video_folder_name: str) -> Optional[str]:
+    # "BlackBox_0" -> "BlackBox"
+    # "CardboardBox_1" -> "CardboardBox"
+    # "LifeJacket_0" -> "LifeJacket"
+    parts = video_folder_name.split('_')
+    for i in range(len(parts) - 1, 0, -1):
+        if parts[i].isdigit():
+            return '_'.join(parts[:i])
+    return parts[0]
+```
+
+**Single BBox Selection**
+```python
+def select_best_bbox_per_frame(xyxy_boxes, confidences):
+    # Select highest confidence detection per frame
+    best_idx = np.argmax(confidences)
+    return xyxy_boxes[best_idx], confidences[best_idx]
+```
+
+**Video Processing**
+```python
+# Video-aware processing with class filtering
+for video_folder, class_name, class_id in video_info:
+    # Process video with specific class targeting
+    detections, stats = process_video(model, video_path, config, class_id)
+    # Output: max 1 bbox per frame for target class
+```
+
+#### Usage Examples
+
+**Basic Inference**
+```bash
+# Run class-aware inference
+python -m utils.infer.infer --model model.pt --config configs/infer.yaml
+
+# Output: predictions_YYYYMMDD_HHMMSS.json
+# Format: [{"video_id": "BlackBox_0", "detections": [{"bboxes": [...]}]}]
+```
+
+**Configuration for Different Models**
+```yaml
+# For custom trained models (sequential class IDs)
+class_mapping:
+  BlackBox: 0
+  CardboardBox: 1
+  LifeJacket: 2
+
+# For COCO pretrained models
+class_mapping:
+  BlackBox: 28      # suitcase
+  CardboardBox: 28  # suitcase
+  LifeJacket: 24    # backpack
+```
+
+#### Output Format
+```json
+{
+  "video_id": "BlackBox_0",
+  "detections": [
+    {
+      "bboxes": [
+        {"frame": 123, "x1": 100, "y1": 50, "x2": 200, "y2": 150},
+        {"frame": 124, "x1": 105, "y1": 55, "x2": 205, "y2": 155}
+        // Single bbox per frame, highest confidence only
+      ]
+    }
+  ]
+}
+```
+
+#### Benefits
+- **Accurate**: Only relevant class detections per video
+- **Clean**: Single bbox per frame prevents duplicates
+- **Flexible**: Unlimited class support via mapping
+- **Efficient**: Targeted detection reduces false positives
+- **Scalable**: Easy to add new classes without code changes
 
 ### Key Implementation Features
 
@@ -181,6 +307,29 @@ python utils/data/split_yolo.py --method random_ratio --ratio 70 20 10
 python utils/data/split_yolo.py --config my_config.yaml
 ```
 
+### Run Class-Aware Inference
+```bash
+# Basic inference with default configuration
+python -m utils.infer.infer --model model.pt --config configs/infer.yaml
+
+# Specify custom output file
+python -m utils.infer.infer --model model.pt --config configs/infer.yaml --output my_predictions.json
+
+# Override confidence threshold
+python -m utils.infer.infer --model model.pt --config configs/infer.yaml --confidence 0.3
+
+# Override IoU threshold
+python -m utils.infer.infer --model model.pt --config configs/infer.yaml --iou-threshold 0.5
+```
+
+### Inference Output Structure
+```
+inference_results/
+├── predictions_YYYYMMDD_HHMMSS.json      # Competition format
+├── predictions_YYYYMMDD_HHMMSS_detailed.json  # With statistics
+└── predictions_YYYYMMDD_HHMMSS_summary.json   # Complete summary
+```
+
 ### Split Files Output Structure
 ```
 dataset/yolo_dataset/
@@ -221,6 +370,12 @@ paths:
 - **CRITICAL**: Use video-level splitting, not frame-level splitting
 - All frames from a single video must belong to the same split (train/val)
 - This prevents artificial performance inflation
+
+### Class-Aware Inference Considerations
+- **Video Naming**: Videos must follow `{ClassName}_{instance_number}` format for automatic class detection
+- **Single BBox**: Only one detection per frame (highest confidence) to avoid duplicates
+- **Class Mapping**: Update `configs/infer.yaml` with appropriate model class IDs
+- **Model Compatibility**: Use COCO class IDs for pretrained models, custom IDs for trained models
 
 ### Performance Considerations
 - Monitor for realistic performance metrics (30-40% expected, not 80-90%)
@@ -303,8 +458,33 @@ paths:
 - Verify class exists in `class_mapping` section
 - Ensure video IDs follow `{ClassName}_{instance_number}` format
 
+**Problem**: "Missing class_mapping in configuration" error
+**Solution**:
+- Add `class_mapping` section to `configs/infer.yaml`
+- Define mapping for all expected video classes
+- Use correct class IDs for your model (COCO or custom)
+
 **Problem**: Subset creation fails with parameter errors
 **Solution**:
 - Ensure all parameters are non-negative integers
 - Use format: `--annotated K N` where K = frames to keep, N = interval size
 - Don't use `--annotated 5 0` (interval can't be 0 when keep > 0)
+
+### Inference Issues
+**Problem**: "No test videos found for inference"
+**Solution**:
+- Verify `public_test_dir` path in `configs/infer.yaml`
+- Check video files exist at `{public_test_dir}/samples/*/drone_video.mp4`
+- Ensure video folders follow correct naming convention
+
+**Problem**: No detections for specific video
+**Solution**:
+- Check class mapping uses correct class IDs for your model
+- Adjust confidence threshold if too high
+- Verify model can detect the mapped COCO class (for pretrained models)
+
+**Problem**: Inference running very slowly
+**Solution**:
+- Use GPU acceleration if available
+- Reduce video size or process subset first
+- Check model compatibility with your hardware

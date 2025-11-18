@@ -1,0 +1,27 @@
+# ZaloAI25 YOLO Inference Configuration
+
+paths:
+  public_test_dir: "dataset/raw/public_test"
+  inference_output: "inference_results"
+
+inference:
+  confidence: 0.25
+  iou_threshold: 0.45
+  max_det: 1000
+  image_size: 640
+  batch_size: 1
+  half: false
+  dnn: false
+  device: "auto"
+  stream: true
+  save_frames: false
+  save_videos: false
+
+class_mapping:
+  BlackBox: 0
+  Jacket: 1
+  Laptop: 2
+  Lifering: 3
+  MobilePhone: 4
+  Person1: 5
+  WaterBottle: 6
