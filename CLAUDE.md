@@ -343,7 +343,7 @@ python utils/data/split_yolo.py --config my_config.yaml
 ```
 
 **Automatic Dataset.yaml Generation**
-Every split operation automatically creates `dataset/yolo_dataset/splits/dataset.yaml` with:
+Every split operation automatically creates `dataset/yolo_dataset/dataset.yaml` with:
 - **Ready-to-use YOLO configuration** - No manual setup required
 - **Automatic class mapping** from `configs/data.yaml`
 - **Proper path handling** for training workflows
@@ -380,8 +380,8 @@ dataset/yolo_dataset/
 ├── splits/           # Train/validation/test split files
 │   ├── train.txt     # Absolute paths to training images
 │   ├── val.txt       # Absolute paths to validation images
-│   ├── test.txt      # Absolute paths to test images (if created)
-│   └── dataset.yaml  # YOLO dataset configuration (auto-generated)
+│   └── test.txt      # Absolute paths to test images (if created)
+├── dataset.yaml      # YOLO dataset configuration (auto-generated)
 └── objects/          # Object reference images
 ```
 

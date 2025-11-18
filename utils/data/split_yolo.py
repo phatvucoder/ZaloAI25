@@ -122,14 +122,14 @@ def split_ood50(image_paths, reversed_flag=False):
     return splits
 
 
-def generate_dataset_yaml(splits, output_dir, config):
+def generate_dataset_yaml(splits, split_dir, config):
     """Generate YOLO dataset.yaml file with train/val paths and class information."""
-    output_dir = Path(output_dir)
+    split_dir = Path(split_dir)
 
-    # Get the root dataset directory (splits_dir is usually inside the dataset)
-    dataset_root = output_dir.parent
+    # split_dir is the dataset root where images/, labels/, and splits/ folders exist
+    dataset_root = split_dir
 
-    # Relative paths from dataset root
+    # Relative paths from dataset root to split files
     train_path = "splits/train.txt" if "train" in splits else None
     val_path = "splits/val.txt" if "val" in splits else None
     test_path = "splits/test.txt" if "test" in splits else None
@@ -161,8 +161,8 @@ def generate_dataset_yaml(splits, output_dir, config):
     # Remove None values
     dataset_yaml = {k: v for k, v in dataset_yaml.items() if v is not None}
 
-    # Write dataset.yaml file
-    yaml_file = output_dir / 'dataset.yaml'
+    # Write dataset.yaml file in the dataset root (split_dir), not in splits subdirectory
+    yaml_file = dataset_root / 'dataset.yaml'
     with open(yaml_file, 'w') as f:
         yaml.dump(dataset_yaml, f, default_flow_style=False, sort_keys=False)
 
@@ -173,13 +173,13 @@ def generate_dataset_yaml(splits, output_dir, config):
     return yaml_file
 
 
-def save_split_files(splits, output_dir, config=None):
+def save_split_files(splits, splits_output_dir, config=None):
     """Save split files to text files with absolute paths."""
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    splits_output_dir = Path(splits_output_dir)
+    splits_output_dir.mkdir(parents=True, exist_ok=True)
 
     for split_name, paths in splits.items():
-        output_file = output_dir / f"{split_name}.txt"
+        output_file = splits_output_dir / f"{split_name}.txt"
 
         with open(output_file, 'w') as f:
             for path in paths:
@@ -189,11 +189,13 @@ def save_split_files(splits, output_dir, config=None):
     for split_name, paths in splits.items():
         print(f"{split_name.capitalize()}: {len(paths)} images")
 
-    print(f"\nSplit files saved to: {output_dir}")
+    print(f"\nSplit files saved to: {splits_output_dir}")
 
     # Generate dataset.yaml if config is provided
+    # dataset.yaml should be saved in the dataset root (parent of splits directory)
     if config is not None:
-        generate_dataset_yaml(splits, output_dir, config)
+        dataset_root = splits_output_dir.parent  # Go up one level from splits/ to dataset root
+        generate_dataset_yaml(splits, dataset_root, config)
 
 
 def main():
