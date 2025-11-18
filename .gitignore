@@ -208,3 +208,9 @@ __marimo__/
 
 # Dataset directory (large video files and processed data)
 dataset/
+
+# Checkpoints
+*.pt
+*.ckpt
+*.pth
+*.onnx

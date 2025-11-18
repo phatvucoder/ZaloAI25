@@ -568,3 +568,77 @@ paths:
 - Use GPU acceleration if available
 - Reduce video size or process subset first
 - Check model compatibility with your hardware
+
+## Universal Label Mapping (Single Class Detection)
+
+### Overview
+The project includes a comprehensive `relabel.py` script that converts the multi-class detection system to a single-class system where all objects are mapped to "target_object" (class_id: 0). This is useful for simplifying the model architecture or creating unified object detection.
+
+### Script Location
+`scripts/relabel.py`
+
+### Key Features
+- **Configuration Updates**: Automatically updates all YAML configuration files
+- **YOLO Annotation Relabeling**: Processes all YOLO `.txt` files using `glob.glob("**/*.txt", recursive=True)`
+- **Backup System**: Creates automatic backups before modifications
+- **Dry Run Mode**: Preview changes without applying them
+- **Progress Tracking**: Detailed statistics and error reporting
+
+### Usage
+```bash
+# Preview changes (recommended first step)
+python scripts/relabel.py --dry-run
+
+# Apply changes with automatic backups
+python scripts/relabel.py --execute
+
+# Apply changes without backups (use with caution)
+python scripts/relabel.py --execute --no-backup
+
+# Custom project root
+python scripts/relabel.py --project-root /path/to/project --execute
+```
+
+### What It Changes
+
+**Configuration Files**:
+- `configs/data.yaml`: Maps all classes to `{new_id: 0, new_name: "target_object"}`
+- `configs/infer.yaml`: Maps all classes to `0`
+
+**YOLO Annotation Files**:
+- Finds all `.txt` files recursively in `dataset/` directories
+- Converts all class IDs to `0` while preserving coordinates
+- Example: `2 0.5 0.5 0.3 0.4` → `0 0.5 0.5 0.3 0.4`
+
+### Integration Workflow
+```bash
+# 1. Generate YOLO dataset
+python -m utils.data.build_yolo --config configs/data.yaml --mode turbo
+
+# 2. Create splits
+python utils/data/split_yolo.py
+
+# 3. Convert to single class (target_object)
+python scripts/relabel.py --execute
+
+# 4. Train single-class model
+python -m utils.train.train --model yolov8n.pt --config configs/train.yaml
+```
+
+### Safety Features
+- **Automatic Backups**: All modified files get `.backup` extensions
+- **Validation**: Only processes valid YOLO format files
+- **Idempotent**: Running multiple times has no additional effect
+- **Recovery**: Restore with `mv configs/data.yaml.backup configs/data.yaml`
+
+### Output Statistics
+```
+📊 PROCESSING STATISTICS
+==================================================
+🔧 Configuration files updated: 2
+📁 YOLO files processed: 1500
+🏷️  Annotations relabelled: 2100
+📋 Backup files created: 1502
+❌ Errors encountered: 0
+==================================================
+```
