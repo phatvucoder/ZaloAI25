@@ -326,6 +326,7 @@ The `[keep, interval]` sampling logic works as follows:
 ### Create Train/Val/Test Splits
 ```bash
 # Default OOD50 splitting (video ID suffix: _0_ → train, _1_ → val)
+# Automatically generates dataset.yaml with class mapping
 python utils/data/split_yolo.py
 
 # OOD50 with reversed assignment (_1_ → train, _0_ → val)
@@ -340,6 +341,13 @@ python utils/data/split_yolo.py --method random_ratio --ratio 70 20 10
 # Custom config file
 python utils/data/split_yolo.py --config my_config.yaml
 ```
+
+**Automatic Dataset.yaml Generation**
+Every split operation automatically creates `dataset/yolo_dataset/splits/dataset.yaml` with:
+- **Ready-to-use YOLO configuration** - No manual setup required
+- **Automatic class mapping** from `configs/data.yaml`
+- **Proper path handling** for training workflows
+- **Test split support** when 3-way splits are created
 
 ### Run Class-Aware Inference
 ```bash
@@ -372,9 +380,47 @@ dataset/yolo_dataset/
 ├── splits/           # Train/validation/test split files
 │   ├── train.txt     # Absolute paths to training images
 │   ├── val.txt       # Absolute paths to validation images
-│   └── test.txt      # Absolute paths to test images (if created)
+│   ├── test.txt      # Absolute paths to test images (if created)
+│   └── dataset.yaml  # YOLO dataset configuration (auto-generated)
 └── objects/          # Object reference images
 ```
+
+#### Auto-Generated Dataset Configuration
+
+**Dataset.yaml Generation**
+- **Automatic**: Generated automatically during any split operation
+- **YOLO Compatible**: Follows Ultralytics YOLO format exactly
+- **Class-Aware**: Automatically extracts class mapping from `configs/data.yaml`
+- **Path Management**: Uses absolute dataset root path with relative split file paths
+
+**Generated Dataset.yaml Format**
+```yaml
+# Absolute path to dataset root
+path: /absolute/path/to/dataset/yolo_dataset
+
+# Relative paths to split files
+train: splits/train.txt
+val: splits/val.txt
+test: splits/test.txt      # Only included if test split exists
+
+# Class information from config
+nc: 7                      # Number of classes
+names:
+  0: backpack
+  1: jacket
+  2: laptop
+  3: lifering
+  4: mobile_phone
+  5: person
+  6: water_bottle
+```
+
+**Class Mapping Integration**
+The system automatically reads the `class_mapping` from `configs/data.yaml` and converts it to YOLO format:
+- Extracts `new_id` and `new_name` for each class
+- Sorts classes by ID for consistent ordering
+- Supports unlimited classes through configuration
+- Ready for immediate YOLO training without manual setup
 
 #### Splitting Methods
 

@@ -122,7 +122,58 @@ def split_ood50(image_paths, reversed_flag=False):
     return splits
 
 
-def save_split_files(splits, output_dir):
+def generate_dataset_yaml(splits, output_dir, config):
+    """Generate YOLO dataset.yaml file with train/val paths and class information."""
+    output_dir = Path(output_dir)
+
+    # Get the root dataset directory (splits_dir is usually inside the dataset)
+    dataset_root = output_dir.parent
+
+    # Relative paths from dataset root
+    train_path = "splits/train.txt" if "train" in splits else None
+    val_path = "splits/val.txt" if "val" in splits else None
+    test_path = "splits/test.txt" if "test" in splits else None
+
+    # Extract class information from config
+    class_mapping = config.get('class_mapping', {})
+
+    # Create class names dictionary sorted by class ID
+    class_names = {}
+    for class_name, class_info in class_mapping.items():
+        class_id = class_info.get('new_id')
+        new_name = class_info.get('new_name', class_name.lower())
+        if class_id is not None:
+            class_names[class_id] = new_name
+
+    # Sort by class ID to ensure consistent ordering
+    sorted_classes = sorted(class_names.items())
+
+    # Create dataset.yaml content
+    dataset_yaml = {
+        'path': str(dataset_root.resolve()),  # Absolute path to dataset root
+        'train': train_path,
+        'val': val_path,
+        'test': test_path if test_path else None,
+        'nc': len(sorted_classes),
+        'names': {class_id: class_name for class_id, class_name in sorted_classes}
+    }
+
+    # Remove None values
+    dataset_yaml = {k: v for k, v in dataset_yaml.items() if v is not None}
+
+    # Write dataset.yaml file
+    yaml_file = output_dir / 'dataset.yaml'
+    with open(yaml_file, 'w') as f:
+        yaml.dump(dataset_yaml, f, default_flow_style=False, sort_keys=False)
+
+    print(f"Dataset configuration saved to: {yaml_file}")
+    print(f"Classes: {dataset_yaml['nc']}")
+    print(f"Class names: {list(dataset_yaml['names'].values())}")
+
+    return yaml_file
+
+
+def save_split_files(splits, output_dir, config=None):
     """Save split files to text files with absolute paths."""
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -139,6 +190,10 @@ def save_split_files(splits, output_dir):
         print(f"{split_name.capitalize()}: {len(paths)} images")
 
     print(f"\nSplit files saved to: {output_dir}")
+
+    # Generate dataset.yaml if config is provided
+    if config is not None:
+        generate_dataset_yaml(splits, output_dir, config)
 
 
 def main():
@@ -181,8 +236,8 @@ def main():
             print(f"Splitting with ood50 method (reversed={args.reversed})")
             splits = split_ood50(image_paths, args.reversed)
 
-        # Save split files
-        save_split_files(splits, splits_output_dir)
+        # Save split files and generate dataset.yaml
+        save_split_files(splits, splits_output_dir, config)
 
         return 0
 
