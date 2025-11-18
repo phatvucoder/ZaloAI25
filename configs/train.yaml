@@ -1,0 +1,18 @@
+# ZaloAI25 YOLO Training Configuration
+
+# Dataset path
+data: 'dataset/yolo_dataset/dataset.yaml'
+
+# Training parameters
+epochs: 50
+imgsz: 640
+batch: 64
+lr0: 0.001
+
+# Augmentation parameters
+mixup: 0.1
+degrees: 15.0
+shear: 5.0
+
+# Experiment name
+name: 'drone_training'

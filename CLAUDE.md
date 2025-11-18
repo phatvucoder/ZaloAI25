@@ -242,6 +242,40 @@ class_info = config['class_mapping'][base_name]  # → {new_id: 0, new_name: "ba
 
 ## Usage
 
+### Train YOLO Model
+```bash
+# Train with default configuration
+python -m utils.train.train --model yolov8n.pt --config configs/train.yaml
+
+# Train with specific model
+python -m utils.train.train --model yolov8s.pt --config configs/train.yaml
+
+# Train with custom config
+python -m utils.train.train --model yolov8n.pt --config my_train_config.yaml
+```
+
+**Training Configuration** (`configs/train.yaml`):
+```yaml
+# Dataset path
+data: 'dataset/yolo_dataset/dataset.yaml'
+
+# Training parameters
+epochs: 50
+imgsz: 640
+batch: 64
+lr0: 0.001
+
+# Augmentation parameters
+mixup: 0.1
+degrees: 15.0
+shear: 5.0
+
+# Experiment name
+name: 'drone_training'
+```
+
+**Note**: The training script passes all YAML configuration parameters directly to `model.train(**config)`, allowing unlimited configuration options without code changes.
+
 ### Build YOLO Dataset
 ```bash
 # Normal mode (compatible)
