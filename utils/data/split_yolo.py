@@ -16,11 +16,19 @@ def load_config(config_path):
         return yaml.safe_load(f)
 
 
-def validate_arguments(method, ratio):
+def validate_arguments(method, ratio, reversed_flag=False, annotations_path=None):
     """Validate command line arguments."""
-    valid_methods = ['random_ratio', 'ood50']
+    valid_methods = ['random_ratio', 'ood50', 'ood50flex']
     if method not in valid_methods:
         raise ValueError(f"Invalid method '{method}'. Must be one of: {valid_methods}")
+
+    # --reversed flag only valid for ood50 method
+    if reversed_flag and method != 'ood50':
+        raise ValueError(f"--reversed flag is only valid with ood50 method, not with {method}")
+
+    # --annotations path required for ood50flex method
+    if method == 'ood50flex' and not annotations_path:
+        raise ValueError("--annotations path is required when using ood50flex method")
 
     if ratio is not None:
         if not isinstance(ratio, (list, tuple)):
@@ -37,6 +45,34 @@ def validate_arguments(method, ratio):
 
         if abs(sum(ratio) - 100) > 0.001:
             raise ValueError(f"Ratio elements must sum to 100, got {sum(ratio)}")
+
+
+def load_annotation_counts(annotation_file):
+    """Load annotation file and return dict of {video_id: annotation_count}."""
+    if not os.path.exists(annotation_file):
+        raise FileNotFoundError(f"Annotation file not found: {annotation_file}")
+
+    import json
+    with open(annotation_file, 'r') as f:
+        annotations = json.load(f)
+
+    annotation_counts = {}
+    for video_data in annotations:
+        video_id = video_data.get('video_id')
+        if not video_id:
+            continue
+
+        # Count all bounding boxes across all annotation intervals
+        total_bboxes = 0
+        video_annotations = video_data.get('annotations', [])
+
+        for annotation_interval in video_annotations:
+            bboxes = annotation_interval.get('bboxes', [])
+            total_bboxes += len(bboxes)
+
+        annotation_counts[video_id] = total_bboxes
+
+    return annotation_counts
 
 
 def collect_image_paths(images_dir):
@@ -122,6 +158,107 @@ def split_ood50(image_paths, reversed_flag=False):
     return splits
 
 
+def split_ood50flex(image_paths, annotation_counts):
+    """Split image paths based on annotation count comparison between _0 and _1 video pairs."""
+    # Group video IDs by base name (e.g., 'Backpack_0' + 'Backpack_1' -> 'Backpack')
+    video_pairs = {}
+    unpaired_videos = []
+
+    # Extract unique video IDs from image paths
+    video_ids_from_images = set()
+    for image_path in image_paths:
+        filename = Path(image_path).stem
+        video_id = parse_video_id_from_filename(filename)
+        video_ids_from_images.add(video_id)
+
+    # Build video pairs
+    for video_id in video_ids_from_images:
+        if video_id.endswith('_0'):
+            base_name = video_id[:-2]  # Remove '_0' suffix
+            if base_name not in video_pairs:
+                video_pairs[base_name] = {'_0': video_id, '_1': None}
+            else:
+                video_pairs[base_name]['_0'] = video_id
+        elif video_id.endswith('_1'):
+            base_name = video_id[:-2]  # Remove '_1' suffix
+            if base_name not in video_pairs:
+                video_pairs[base_name] = {'_0': None, '_1': video_id}
+            else:
+                video_pairs[base_name]['_1'] = video_id
+        else:
+            # Videos without _0 or _1 suffix go to train by default
+            unpaired_videos.append(video_id)
+
+    # Determine train/val assignment based on annotation counts
+    train_videos = set()
+    val_videos = set()
+
+    # Process paired videos
+    for base_name, pair in video_pairs.items():
+        video_0 = pair['_0']
+        video_1 = pair['_1']
+
+        count_0 = annotation_counts.get(video_0, 0) if video_0 else 0
+        count_1 = annotation_counts.get(video_1, 0) if video_1 else 0
+
+        # Video with MORE annotations goes to train, fewer to val
+        if count_0 >= count_1:
+            if video_0:
+                train_videos.add(video_0)
+            if video_1:
+                val_videos.add(video_1)
+        else:
+            if video_1:
+                train_videos.add(video_1)
+            if video_0:
+                val_videos.add(video_0)
+
+    # Unpaired videos (missing _0 or _1) go to train by default
+    train_videos.update(unpaired_videos)
+
+    # Assign image paths based on video assignment
+    train_paths = []
+    val_paths = []
+
+    for image_path in image_paths:
+        filename = Path(image_path).stem
+        video_id = parse_video_id_from_filename(filename)
+
+        if video_id in train_videos:
+            train_paths.append(image_path)
+        elif video_id in val_videos:
+            val_paths.append(image_path)
+        else:
+            # Default to train for any unspecified videos
+            train_paths.append(image_path)
+
+    splits = {
+        'train': train_paths,
+        'val': val_paths
+    }
+
+    # Print assignment summary
+    print("ood50flex assignment summary:")
+    for base_name, pair in video_pairs.items():
+        video_0 = pair['_0']
+        video_1 = pair['_1']
+        count_0 = annotation_counts.get(video_0, 0) if video_0 else 0
+        count_1 = annotation_counts.get(video_1, 0) if video_1 else 0
+
+        if count_0 >= count_1:
+            train_vid = video_0 if video_0 else "None"
+            val_vid = video_1 if video_1 else "None"
+        else:
+            train_vid = video_1 if video_1 else "None"
+            val_vid = video_0 if video_0 else "None"
+
+        print(f"  {base_name}: train={train_vid} (ann={max(count_0, count_1)}), val={val_vid} (ann={min(count_0, count_1)})")
+
+    print(f"  Unpaired videos: {len(unpaired_videos)} → train")
+
+    return splits
+
+
 def generate_dataset_yaml(splits, split_dir, config):
     """Generate YOLO dataset.yaml file with train/val paths and class information."""
     split_dir = Path(split_dir)
@@ -202,12 +339,14 @@ def main():
     parser = argparse.ArgumentParser(description='Create train/val/test splits for YOLO dataset')
     parser.add_argument('--config', default='configs/data.yaml',
                        help='Path to configuration file')
-    parser.add_argument('--method', choices=['random_ratio', 'ood50'], default='ood50',
-                       help='Splitting method: random_ratio or ood50')
+    parser.add_argument('--method', choices=['random_ratio', 'ood50', 'ood50flex'], default='ood50',
+                       help='Splitting method: random_ratio, ood50, or ood50flex')
     parser.add_argument('--ratio', nargs='+', type=float,
                        help='Split ratios as list of percentages (e.g., 70 30 or 70 20 10)')
     parser.add_argument('--reversed', action='store_true',
                        help='Reverse train/val assignment for ood50 method')
+    parser.add_argument('--annotations',
+                       help='Path to annotations JSON file (required for ood50flex method, e.g., dataset/raw/train/annotations/annotations.json)')
 
     args = parser.parse_args()
 
@@ -216,7 +355,7 @@ def main():
         config = load_config(args.config)
 
         # Validate arguments
-        validate_arguments(args.method, args.ratio)
+        validate_arguments(args.method, args.ratio, args.reversed, args.annotations)
 
         # Get paths from config
         split_dir = Path(config['paths']['split_dir'])
@@ -237,6 +376,16 @@ def main():
         elif args.method == 'ood50':
             print(f"Splitting with ood50 method (reversed={args.reversed})")
             splits = split_ood50(image_paths, args.reversed)
+
+        elif args.method == 'ood50flex':
+            # Load annotation counts for intelligent splitting from provided path
+            annotation_file = Path(args.annotations)
+            print(f"Loading annotation counts from: {annotation_file}")
+            annotation_counts = load_annotation_counts(annotation_file)
+            print(f"Loaded annotation counts for {len(annotation_counts)} videos")
+
+            print(f"Splitting with ood50flex method (annotation-based comparison)")
+            splits = split_ood50flex(image_paths, annotation_counts)
 
         # Save split files and generate dataset.yaml
         save_split_files(splits, splits_output_dir, config)

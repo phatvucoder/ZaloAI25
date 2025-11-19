@@ -332,6 +332,13 @@ python utils/data/split_yolo.py
 # OOD50 with reversed assignment (_1_ → train, _0_ → val)
 python utils/data/split_yolo.py --method ood50 --reversed
 
+# OOD50flex - intelligent splitting based on annotation counts
+# Video with MORE annotations → train, fewer annotations → val
+python utils/data/split_yolo.py --method ood50flex --annotations dataset/raw/train/annotations/annotations.json
+
+# OOD50flex with custom config
+python utils/data/split_yolo.py --config my_config.yaml --method ood50flex --annotations dataset/raw/train/annotations/annotations.json
+
 # Random ratio splitting (ignores data leakage)
 python utils/data/split_yolo.py --method random_ratio --ratio 70 30
 
@@ -430,6 +437,24 @@ The system automatically reads the `class_mapping` from `configs/data.yaml` and 
 - Files ending in `_1_` go to validation set
 - `--reversed` flag swaps the assignments
 - Preserves data leakage prevention (video-level splitting)
+
+**OOD50flex Method (Annotation-Based Splitting)**
+- **Intelligent Assignment**: Compares annotation counts between video pairs
+- **Logic**: Video with MORE annotations → train, fewer annotations → val
+- **Required**: `--annotations` parameter pointing to annotations JSON file
+- **Flexible**: Works with any annotations file location
+- **Example Format**: `--annotations dataset/raw/train/annotations/annotations.json`
+- **Assignment Summary**: Shows detailed train/val assignment with annotation counts
+- **Handles Missing Pairs**: Unpaired videos (only `_0` or only `_1`) default to train
+
+**Algorithm Example**:
+```
+Video Pair: Backpack_0 (3 annotations) vs Backpack_1 (1 annotation)
+→ Result: Backpack_0 → train, Backpack_1 → val
+
+Video Pair: Jacket_0 (1 annotation) vs Jacket_1 (4 annotations)
+→ Result: Jacket_1 → train, Jacket_0 → val
+```
 
 **Random Ratio Method**
 - Randomly shuffles all images and splits by percentage
@@ -549,6 +574,13 @@ paths:
 - Ensure all parameters are non-negative integers
 - Use format: `--annotated K N` where K = frames to keep, N = interval size
 - Don't use `--annotated 5 0` (interval can't be 0 when keep > 0)
+
+**Problem**: ood50flex method errors
+**Solution**:
+- **Missing annotations path**: Use `--annotations dataset/raw/train/annotations/annotations.json`
+- **Annotations file not found**: Verify the annotations file path exists and is readable
+- **Invalid format**: Ensure annotations file follows the expected JSON structure with `video_id` and `annotations` fields
+- **--reversed with ood50flex**: `--reversed` flag is only valid with `ood50` method, not `ood50flex`
 
 ### Inference Issues
 **Problem**: "No test videos found for inference"
